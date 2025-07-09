@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../_core/themes/colors.dart';
 
@@ -63,10 +64,12 @@ class _RequestDeniedCameraPermissionDialog extends StatelessWidget {
   }
 
   _onNotNowClicked(BuildContext context) {
-    Navigator.pop(context);
+    Navigator.pop(context, null);
   }
 
-  _onConfirmClicked(BuildContext context) {
-    Navigator.pop(context);
+  _onConfirmClicked(BuildContext context) async {
+    PermissionStatus status = await Permission.camera.request();
+    if (!context.mounted) return;
+    Navigator.pop(context, status);
   }
 }

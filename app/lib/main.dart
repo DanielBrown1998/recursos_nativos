@@ -9,8 +9,11 @@ import 'ui/home/view_model/home_viewmodel.dart';
 import 'ui/home/home_screen.dart';
 import 'ui/login/login_screen.dart';
 import 'ui/registration/view_model/registration_viewmodel.dart';
+import 'package:flutter/services.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const BancoDouroApp());
 }
 

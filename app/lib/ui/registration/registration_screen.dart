@@ -1,4 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_banco_douro/ui/registration/widgets/denied_camera_permission_dialog.dart';
 import 'package:flutter_banco_douro/ui/registration/widgets/request_camera_permission_dialog.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -165,63 +169,138 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   /// Lógica para solicitar permissão da câmera
   void _handleCameraClicked(
-    BuildContext context,
-    RegistrationViewModel viewModel, {
-    bool isDocument = true,
-  }) async {
+      BuildContext context, RegistrationViewModel viewModel,
+      {bool isDocument = true}) async {
     List<CameraDescription> cameras = await availableCameras();
     PermissionStatus cameraPermissionStatus = await Permission.camera.status;
 
     if (cameraPermissionStatus == PermissionStatus.denied) {
       if (!context.mounted) return;
-      showRequestCameraPermissionDialog(context);
+      PermissionStatus? newCameraPermissionStatus =
+          await showRequestCameraPermissionDialog(context);
+      if (newCameraPermissionStatus != null) {
+        cameraPermissionStatus = newCameraPermissionStatus;
+      }
+    } else if (cameraPermissionStatus.isPermanentlyDenied) {
+      if (!context.mounted) return;
+      await showDeniedCameraPermissionDialog(context);
     }
+    if (!cameraPermissionStatus.isDenied &&
+        !cameraPermissionStatus.isPermanentlyDenied) {
+      late CameraDescription cameraDescription;
+      if (isDocument) {
+        // TODO: Abrir câmera para fotografar documento
+        cameraController =
+            CameraController(cameras.first, ResolutionPreset.high);
+        await cameraController!.initialize();
+        cameraDescription = cameras.first;
+      } else {
+        // TODO: Abrir câmera para fotografar selfie
+        cameraController = CameraController(cameras.last, ResolutionPreset.max);
+        await cameraController!.initialize();
+        cameraDescription = cameras.last;
+      }
 
-    if (isDocument) {
-      // TODO: Abrir câmera para fotografar documento
-      cameraController = CameraController(cameras.first, ResolutionPreset.high);
-      await cameraController!.initialize();
-    } else {
-      // TODO: Abrir câmera para fotografar selfie
-      cameraController = CameraController(cameras.last, ResolutionPreset.max);
-      await cameraController!.initialize();
+      double aspectRatio = cameraController!.value.aspectRatio;
+      if (!context.mounted) return;
+      await showCamera(context, cameraController!, cameraDescription,
+          aspectRatio, isDocument);
+      setState(() {});
     }
-    if (!context.mounted) return;
-    await showCamera(context, cameraController!);
-    setState(() {});
   }
 }
 
-Future<void> showCamera(
-    BuildContext context, CameraController cameraController) {
-  AlertDialog cameraBox = AlertDialog(
-    actions: [
-      IconButton(
-        onPressed: () {},
-        icon: const Icon(Icons.camera_alt),
-      ),
-      IconButton(
-        onPressed: () {
-          cameraController.dispose();
-          Navigator.pop(context);
-        },
-        icon: const Icon(Icons.cancel),
-      )
-    ],
-    content: Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height / 2,
-        width: MediaQuery.of(context).size.width,
-        child: CameraPreview(cameraController),
-      ),
-    ),
+Future<void> showCamera(BuildContext context, CameraController cameraController,
+    CameraDescription cameraDescription, double aspectRatio, bool isDocument) {
+  switch (cameraDescription.sensorOrientation) {
+    case (0):
+      cameraController.lockCaptureOrientation(DeviceOrientation.landscapeRight);
+      break;
+    case (90):
+      cameraController.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      break;
+    case (180):
+      cameraController.lockCaptureOrientation(DeviceOrientation.landscapeLeft);
+      break;
+    case (270):
+      cameraController.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      break;
+  }
+  // Usamos o widget Dialog para ter mais controle sobre o layout e preencher a tela inteira.
+  final cameraDialog = Dialog(
+    shape: const BeveledRectangleBorder(),
+    backgroundColor: Colors.black,
+    insetPadding: EdgeInsets.zero, // Remove o padding padrão ao redor do Dialog
+    child: (cameraController.value.isInitialized)
+        ? Stack(
+            fit: StackFit.expand,
+            children: [
+              // Camera Preview em tela cheia
+              (!isDocument)
+                  ? Container(
+                      decoration: const BoxDecoration(color: Colors.white),
+                    )
+                  : const SizedBox(
+                      height: 0,
+                    ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: 1 / aspectRatio,
+                    child: CameraPreview(
+                      cameraController,
+                    ),
+                  ),
+                ),
+              ),
+              // Imagem de guia sobreposta
+              Image.asset(
+                (isDocument)
+                    ? "assets/images/guides/guide_cnh.png"
+                    : "assets/images/guides/guide_selfie.png",
+                fit: BoxFit.contain,
+              ),
+              // Botões de ação na parte inferior
+              Positioned(
+                bottom: 64,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Transform.rotate(
+                      angle: isDocument ? pi/2: 0,
+                      child: IconButton(
+                        onPressed: () => _onCapturePictureButton(),
+                        icon: Icon(Icons.camera_alt,
+                            color: (isDocument) ? Colors.white : Colors.black,
+                            size: 42),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        cameraController.dispose();
+                        Navigator.pop(context);
+                      },
+                      icon: Icon(Icons.cancel,
+                          color: (isDocument) ? Colors.white : Colors.black,
+                          size: 42),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        : const Center(child: CircularProgressIndicator()),
   );
 
   return showDialog(
     context: context,
     builder: (context) {
-      return cameraBox;
+      return cameraDialog;
     },
   );
 }
+
+_onCapturePictureButton() async {}
