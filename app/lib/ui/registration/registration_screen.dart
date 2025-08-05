@@ -74,8 +74,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               _buildImageSection(
                   label: "Fotografar documento",
                   onTap: () async {
-                    viewModel.imageDocument =
-                        await _handleCameraClicked(context);
+                    Uint8List? picture = await _handleCameraClicked(context);
+                    if (picture != null) viewModel.saveDocumentImage(picture);
                   },
                   icon: Icons.badge,
                   isDocument: true),
@@ -86,8 +86,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               _buildImageSection(
                   label: "Fotografar rosto",
                   onTap: () async {
-                    viewModel.imageSelfie =
+                    Uint8List? picture =
                         await _handleCameraClicked(context, isDocument: false);
+                    if (picture != null) viewModel.saveSelfieImage(picture);
                   },
                   isDocument: false,
                   icon: Icons.face),
