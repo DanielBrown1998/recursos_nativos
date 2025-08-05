@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_banco_douro/ui/registration/widgets/denied_camera_permission_dialog.dart';
+import 'package:flutter_banco_douro/ui/registration/widgets/image_preview_dialog.dart';
 import 'package:flutter_banco_douro/ui/registration/widgets/request_camera_permission_dialog.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +22,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   String _selectedDocumentType = "CNH"; // Valor inicial do dropdown
   CameraController? cameraController;
-
+  XFile? pictureDoc;
+  XFile? pictureFace;
   @override
   Widget build(BuildContext context) {
     final viewModel = Provider.of<RegistrationViewModel>(context);
@@ -71,7 +73,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               /// FOTO DO DOCUMENTO
               _buildImageSection(
                   label: "Fotografar documento",
-                  onTap: () => _handleCameraClicked(context, viewModel),
+                  onTap: () async {
+                    viewModel.imageDocument =
+                        await _handleCameraClicked(context);
+                  },
                   icon: Icons.badge,
                   isDocument: true),
 
@@ -80,8 +85,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               /// FOTO DO ROSTO
               _buildImageSection(
                   label: "Fotografar rosto",
-                  onTap: () => _handleCameraClicked(context, viewModel,
-                      isDocument: false),
+                  onTap: () async {
+                    viewModel.imageSelfie =
+                        await _handleCameraClicked(context, isDocument: false);
+                  },
                   isDocument: false,
                   icon: Icons.face),
 
@@ -168,50 +175,53 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   /// Lógica para solicitar permissão da câmera
-  void _handleCameraClicked(
-      BuildContext context, RegistrationViewModel viewModel,
+  Future<Uint8List?> _handleCameraClicked(BuildContext context,
       {bool isDocument = true}) async {
     List<CameraDescription> cameras = await availableCameras();
     PermissionStatus cameraPermissionStatus = await Permission.camera.status;
 
     if (cameraPermissionStatus == PermissionStatus.denied) {
-      if (!context.mounted) return;
+      if (!context.mounted) return null;
       PermissionStatus? newCameraPermissionStatus =
           await showRequestCameraPermissionDialog(context);
       if (newCameraPermissionStatus != null) {
         cameraPermissionStatus = newCameraPermissionStatus;
       }
     } else if (cameraPermissionStatus.isPermanentlyDenied) {
-      if (!context.mounted) return;
+      if (!context.mounted) return null;
       await showDeniedCameraPermissionDialog(context);
     }
     if (!cameraPermissionStatus.isDenied &&
         !cameraPermissionStatus.isPermanentlyDenied) {
       late CameraDescription cameraDescription;
       if (isDocument) {
-        // TODO: Abrir câmera para fotografar documento
         cameraController =
             CameraController(cameras.first, ResolutionPreset.high);
         await cameraController!.initialize();
         cameraDescription = cameras.first;
       } else {
-        // TODO: Abrir câmera para fotografar selfie
         cameraController = CameraController(cameras.last, ResolutionPreset.max);
         await cameraController!.initialize();
         cameraDescription = cameras.last;
       }
 
       double aspectRatio = cameraController!.value.aspectRatio;
-      if (!context.mounted) return;
-      await showCamera(context, cameraController!, cameraDescription,
-          aspectRatio, isDocument);
+      if (!context.mounted) return null;
+      Uint8List? picture = await showCamera(context, cameraController!,
+          cameraDescription, aspectRatio, isDocument);
       setState(() {});
+      return picture;
     }
+    return null;
   }
 }
 
-Future<void> showCamera(BuildContext context, CameraController cameraController,
-    CameraDescription cameraDescription, double aspectRatio, bool isDocument) {
+Future<Uint8List?> showCamera(
+    BuildContext context,
+    CameraController cameraController,
+    CameraDescription cameraDescription,
+    double aspectRatio,
+    bool isDocument) {
   switch (cameraDescription.sensorOrientation) {
     case (0):
       cameraController.lockCaptureOrientation(DeviceOrientation.landscapeRight);
@@ -270,9 +280,15 @@ Future<void> showCamera(BuildContext context, CameraController cameraController,
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     Transform.rotate(
-                      angle: isDocument ? pi/2: 0,
+                      angle: isDocument ? pi / 2 : 0,
                       child: IconButton(
-                        onPressed: () => _onCapturePictureButton(),
+                        onPressed: () async {
+                          Uint8List? picture = await _onCapturePictureButton(
+                              context, cameraController);
+                          if (!context.mounted) return;
+                          cameraController.dispose();
+                          Navigator.pop(context, picture);
+                        },
                         icon: Icon(Icons.camera_alt,
                             color: (isDocument) ? Colors.white : Colors.black,
                             size: 42),
@@ -303,4 +319,15 @@ Future<void> showCamera(BuildContext context, CameraController cameraController,
   );
 }
 
-_onCapturePictureButton() async {}
+Future<dynamic> _onCapturePictureButton(
+    BuildContext context, CameraController cameraController) async {
+  XFile snapshotFile = await cameraController.takePicture();
+
+  Uint8List snapshotFileAsByte = await snapshotFile.readAsBytes();
+
+  if (!context.mounted) return;
+  bool confirm = await showImagePreviewDialog(context, snapshotFileAsByte,
+      needConfirmation: true);
+  if (confirm) return snapshotFileAsByte;
+  return null;
+}

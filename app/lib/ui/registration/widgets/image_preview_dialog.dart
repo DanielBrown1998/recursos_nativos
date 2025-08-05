@@ -17,7 +17,7 @@ Future<dynamic> showImagePreviewDialog(
         actions: [
           IconButton.outlined(
             icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
           ),
           Visibility(
             visible: needConfirmation,
